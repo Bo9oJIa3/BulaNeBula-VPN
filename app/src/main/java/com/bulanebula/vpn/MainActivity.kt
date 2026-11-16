@@ -1,208 +1,196 @@
 package com.bulanebula.vpn
 
-import android.app.Activity
-import android.content.Intent
-import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bulanebula.vpn.service.VpnConnectionService
-import com.bulanebula.vpn.utils.KeyParser
-
-enum class VpnStatus {
-    DISCONNECTED, CONNECTING, CONNECTED, ERROR_SQUASH
-}
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            BulaNeBulaScreen(
-                onStartVpn = { startService(Intent(this, VpnConnectionService::class.java)) },
-                onStopVpn = {
-                    val intent = Intent(this, VpnConnectionService::class.java).apply {
-                        action = VpnConnectionService.ACTION_DISCONNECT
-                    }
-                    startService(intent)
-                }
-            )
+            BulaNeBulaTheme {
+                VpnMainScreen()
+            }
         }
     }
 }
 
-@Composable
-fun BulaNeBulaScreen(onStartVpn: () -> Unit, onStopVpn: () -> Unit) {
-    var status by remember { mutableStateOf(VpnStatus.DISCONNECTED) }
-    var keyInput by remember { mutableStateOf("") }
-    var parsedNodeName by remember { mutableStateOf("Узел не выбран") }
+// Состояния подключения VPN
+enum class VpnState {
+    IDLE, CONNECTING, CONNECTED, ERROR
+}
 
-    val vpnPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            status = VpnStatus.CONNECTED
-            onStartVpn()
-        } else {
-            status = VpnStatus.ERROR_SQUASH
-        }
+data class VpnServer(val id: Int, val name: String, val ping: Int)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun VpnMainScreen() {
+    var vpnState by remember { mutableStateOf(VpnState.IDLE) }
+    var selectedServer by remember { mutableStateOf(VpnServer(1, "Cyber-Tokyo 01", 34)) }
+    var showServerDialog by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Список доступных серверов (до 150 узлов)
+    val servers = remember {
+        listOf(
+            VpnServer(1, "Cyber-Tokyo 01", 34),
+            VpnServer(2, "Neon-Berlin 02", 45),
+            VpnServer(3, "Matrix-Frankfurt 03", 52),
+            VpnServer(4, "Silicon-Tokyo 04", 68)
+        )
     }
 
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    // Анимация расплющивания помидора
-    val scaleX by animateFloatAsState(
-        targetValue = when (status) {
-            VpnStatus.ERROR_SQUASH -> 1.45f
-            VpnStatus.CONNECTING -> 0.92f
-            else -> 1f
+    // Анимация изменения цвета кнопки в зависимости от состояния
+    val buttonColor by animateColorAsState(
+        targetValue = when (vpnState) {
+            VpnState.IDLE -> Color(0xFFFF3344)       // Сочный красный помидор
+            VpnState.CONNECTING -> Color(0xFFFF8800) // Оранжевый процесс
+            VpnState.CONNECTED -> Color(0xFF00FF88)  // Неоново-зеленый успех
+            VpnState.ERROR -> Color(0xFF7A1C1C)      // Темно-алый провал (шмяк!)
         },
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "scaleX"
-    )
-    val scaleY by animateFloatAsState(
-        targetValue = when (status) {
-            VpnStatus.ERROR_SQUASH -> 0.55f
-            VpnStatus.CONNECTING -> 1.08f
-            else -> 1f
-        },
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "scaleY"
+        animationSpec = tween(durationMillis = 500),
+        label = "ColorAnim"
     )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0D0D12))
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color(0xFF0D0D12) // Тёмный киберпанк-фон
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "BulaNeBula",
-                color = Color(0xFF00FF88),
-                fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold
-            )
-            Text(
-                text = "Была не была, хуже не будет",
-                color = Color(0xFF8E8E9E),
-                fontSize = 14.sp
-            )
-        }
-
-        // Кастомная векторная кнопка-помидор
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(220.dp)
-                .graphicsLayer(scaleX = scaleX, scaleY = scaleY)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    if (status == VpnStatus.CONNECTED) {
-                        status = VpnStatus.DISCONNECTED
-                        onStopVpn()
-                    } else {
-                        val parsed = KeyParser.parse(keyInput)
-                        if (parsed == null) {
-                            status = VpnStatus.ERROR_SQUASH
-                            parsedNodeName = "Кривой ключ! Помидор в лепёшку!"
-                        } else {
-                            parsedNodeName = "${parsed.name} (${parsed.protocol.uppercase()})"
-                            val intent = VpnService.prepare(context)
-                            if (intent != null) {
-                                vpnPermissionLauncher.launch(intent)
-                            } else {
-                                status = VpnStatus.CONNECTED
-                                onStartVpn()
-                            }
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Шапка: Название и выбор сервера
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "BulaNeBula VPN",
+                        color = Color(0xFF00FF88),
+                        fontSize = 28.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    // Кнопка выбора сервера
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { showServerDialog = true },
+                        color = Color(0xFF1A1A24)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "🌍 Сервер: ${selectedServer.name} (${selectedServer.ping}ms)",
+                                color = Color.White,
+                                fontSize = 14.sp
+                            )
                         }
                     }
                 }
-        ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val tomatoColor = when (status) {
-                    VpnStatus.CONNECTED -> Color(0xFF00E676)
-                    VpnStatus.ERROR_SQUASH -> Color(0xFFFF1744)
-                    else -> Color(0xFFFF3D00)
-                }
-                // Тело помидора
-                drawCircle(color = tomatoColor, radius = size.minDimension / 2.2f)
-                // Блик
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.25f),
-                    radius = size.minDimension / 9f,
-                    center = Offset(size.width * 0.35f, size.height * 0.35f)
-                )
-                // Хвостик-листик
-                val leafPath = Path().apply {
-                    moveTo(size.width * 0.5f, size.height * 0.12f)
-                    lineTo(size.width * 0.42f, size.height * 0.04f)
-                    lineTo(size.width * 0.58f, size.height * 0.04f)
-                    close()
-                }
-                drawPath(leafPath, color = Color(0xFF00C853))
-            }
-            Text(
-                text = when (status) {
-                    VpnStatus.CONNECTED -> "ПАШЕТ"
-                    VpnStatus.ERROR_SQUASH -> "ШМЯК!"
-                    else -> "ПУСК"
-                },
-                color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Black
-            )
-        }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = parsedNodeName,
-                color = Color(0xFF00E5FF),
-                fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-            OutlinedTextField(
-                value = keyInput,
-                onValueChange = {
-                    keyInput = it
-                    if (status == VpnStatus.ERROR_SQUASH) status = VpnStatus.DISCONNECTED
-                },
-                placeholder = { Text("Вставь vless:// или ss:// ключ...", color = Color.Gray) },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFF00FF88),
-                    unfocusedBorderColor = Color(0xFF2C2C3A),
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
-}
+                // Главный элемент: Помидор превращается в банку томатной пасты!
+                Box(
+                    modifier = Modifier
+                        .size(200.dp)
+                        .clickable {
+                            if (vpnState == VpnState.IDLE || vpnState == VpnState.ERROR) {
+                                vpnState = VpnState.CONNECTING
+                                coroutineScope.launch {
+                                    delay(2500) // Имитация подключения к серверу
+                                    
+                                    // Здесь будет логика VpnService. 
+                                    // Если произошла ошибка сети — ставим vpnState = VpnState.ERROR (кнопка отлипнет!)
+                                    // Если успешно — vpnState = VpnState.CONNECTED
+                                    vpnState = VpnState.CONNECTED 
+                                }
+                            } else if (vpnState == VpnState.CONNECTED) {
+                                vpnState = VpnState.IDLE // Отключение
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawTomatoOrPaste(vpnState, buttonColor)
+                    }
+                    
+                    Text(
+                        text = when (vpnState) {
+                            VpnState.IDLE -> "ТАП!"
+                            VpnState.CONNECTING -> "ПАСТА..."
+                            VpnState.CONNECTED -> "В СЕТИ"
+                            VpnState.ERROR -> "ШМЯК!"
+                        },
+                        color = Color.White,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
+
+                // Статус-подсказка внизу
+                Text(
+                    text = when (vpnState) {
+                        VpnState.IDLE -> "Нажми, чтобы запустить банку в космос"
+                        VpnState.CONNECTING -> "Трансформируем помидор в томатную пасту..."
+                        VpnState.CONNECTED -> "Туннель защищен. Концентрат свободы активен!"
+                        VpnState.ERROR -> "Ошибка связи! Кнопка отлипла, пробуй снова."
+                    },
+                    color = Color(0xFF8C8C9E),
+                    fontSize = 14.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+
+            // Всплывающее окно выбора серверов (до 150 штук)
+            if (showServerDialog) {
+                AlertDialog(
+                    onDismissRequest = { showServerDialog = false },
+                    title = { Text("Выбор узла", color = Color.White) },
+                    text = {
+                        Column {
+                            servers.forEach { server ->
+                                TextButton(
+                                    onClick = {
+                                        selectedServer = server
+                                        showServerDialog = false
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "${server.name} —${server.ping}ms",
+                                        color = Color(0xFF00FF88)
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Text
+                        
