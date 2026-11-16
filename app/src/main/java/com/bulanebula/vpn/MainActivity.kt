@@ -134,4 +134,36 @@ fun VpnMainScreen(onNavigateToRecommended: () -> Unit) {
                             },
                             color = Color.White,
                             fontSize = 14.sp
-                            
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(200.dp)
+                        .clickable {
+                            if (selectedServer != null && (vpnState == VpnState.IDLE || vpnState == VpnState.ERROR)) {
+                                vpnState = VpnState.CONNECTING
+                                coroutineScope.launch {
+                                    delay(2500)
+                                    vpnState = VpnState.CONNECTED 
+                                }
+                            } else if (vpnState == VpnState.CONNECTED) {
+                                vpnState = VpnState.IDLE
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawTomatoOrPaste(vpnState, buttonColor)
+                    }
+                    
+                    Text(
+                        text = when (vpnState) {
+                            VpnState.IDLE -> "ТАП!"
+                            VpnState.CONNECTING -> "ПАСТА..."
+                            VpnState.CONNECTED -> "В СЕТИ"
+                            VpnState.ERROR -> "ШМЯК!"
+                        },
+                        color = Color
+                        
