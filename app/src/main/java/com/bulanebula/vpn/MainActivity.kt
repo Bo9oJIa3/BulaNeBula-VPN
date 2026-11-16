@@ -165,5 +165,231 @@ fun VpnMainScreen(onNavigateToRecommended: () -> Unit) {
                             VpnState.CONNECTED -> "В СЕТИ"
                             VpnState.ERROR -> "ШМЯК!"
                         },
-                        color = Color
-                        
+                        color = Color.White,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
+
+                Text(
+                    text = when (vpnState) {
+                        VpnState.IDLE -> "Нажми, чтобы запустить банку в космос"
+                        VpnState.CONNECTING -> "Трансформируем помидор в томатную пасту..."
+                        VpnState.CONNECTED -> "Туннель защищен. Концентрат свободы активен!"
+                        VpnState.ERROR -> "Ошибка связи! Кнопка отлипла, пробуй снова."
+                    },
+                    color = Color(0xFF8C8C9E),
+                    fontSize = 14.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+
+            if (showServerDialog) {
+                AlertDialog(
+                    onDismissRequest = { showServerDialog = false },
+                    title = { Text("Выбор узла (${servers.size} доступно)", color = Color.White) },
+                    text = {
+                        Box(
+                            modifier = Modifier
+                                .height(350.dp)
+                                .fillMaxWidth()
+                        ) {
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(servers) { server ->
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                selectedServer = server
+                                                showServerDialog = false
+                                            },
+                                        color = Color(0xFF252533)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = server.name,
+                                                color = Color.White,
+                                                fontSize = 14.sp
+                                            )
+                                            Text(
+                                                text = "${server.ping} ms",
+                                                color = Color(0xFF00FF88),
+                                                fontSize = 13.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showServerDialog = false }) {
+                            Text("Закрыть", color = Color.White)
+                        }
+                    },
+                    containerColor = Color(0xFF1A1A24)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RecommendedVpnScreen(onBack: () -> Unit) {
+    val recommendedList = remember {
+        listOf(
+            RecommendedVpn("BulaNeBula Core", "🍅 Родная банка", "Оригинальный клиент с открытым кодом и томатным концентратом."),
+            RecommendedVpn("OpenTunnel X", "⚡ Быстрый как кетчуп", "Надежный классический инструмент для обхода преград."),
+            RecommendedVpn("CyberTomato Proxy", "🥫 Защита пастой", "Сверхсекретный узел для экстремальных условий киберпанка.")
+        )
+    }
+
+    var randomPick by remember { mutableStateOf<RecommendedVpn?>(null) }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color(0xFF0D0D12)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "🍅 Томатный Альянс",
+                    color = Color(0xFF00FF88),
+                    fontSize = 22.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+                TextButton(onClick = onBack) {
+                    Text(text = "Назад", color = Color.White)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Рекомендованные проекты и случайные узлы из сети:",
+                color = Color(0xFF8C8C9E),
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    randomPick = recommendedList.random()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3344)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "🎲 Выбрать случайный VPN", color = Color.White)
+            }
+
+            if (randomPick != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF1A1A24),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = "✨ Судьба выбрала: ${randomPick?.name}", color = Color(0xFF00FF88), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = randomPick?.description ?: "", color = Color.White, fontSize = 13.sp)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                items(recommendedList) { vpn ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF1A1A24),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = vpn.name,
+                                    color = Color.White,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                                Text(
+                                    text = vpn.tag,
+                                    color = Color(0xFF00FF88),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = vpn.description,
+                                color = Color(0xFF8C8C9E),
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun DrawScope.drawTomatoOrPaste(state: VpnState, color: Color) {
+    val width = size.width
+    val height = size.height
+
+    if (state == VpnState.CONNECTING || state == VpnState.CONNECTED) {
+        drawRect(
+            color = color,
+            topLeft = Offset(width * 0.25f, height * 0.2f),
+            size = Size(width * 0.5f, height * 0.7f),
+            cornerRadius = CornerRadius(16f, 16f)
+        )
+        drawRect(
+            color = Color(0xFFCCCCCC),
+            topLeft = Offset(width * 0.22f, height * 0.15f),
+            size = Size(width * 0.56f, height * 0.08f),
+            cornerRadius = CornerRadius(8f, 8f)
+        )
+    } else {
+        drawCircle(
+            color = color,
+            radius = width * 0.35f,
+            center = Offset(width * 0.5f, height * 0.55f)
+        )
+        drawCircle(
+            color = Color(0xFF00FF88),
+            radius = width * 0.08f,
+            center = Offset(width * 0.5f, height * 0.25f)
+        )
+    }
+}
+
+@Composable
+fun BulaNeBulaTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(),
+        content = content
+    )
+}
