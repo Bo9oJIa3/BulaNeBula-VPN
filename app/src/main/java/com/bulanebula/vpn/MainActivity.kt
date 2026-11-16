@@ -360,13 +360,13 @@ fun DrawScope.drawTomatoOrPaste(state: VpnState, color: Color) {
     val height = size.height
 
     if (state == VpnState.CONNECTING || state == VpnState.CONNECTED) {
-        drawRect(
+        drawRoundRect(
             color = color,
             topLeft = Offset(width * 0.25f, height * 0.2f),
             size = Size(width * 0.5f, height * 0.7f),
             cornerRadius = CornerRadius(16f, 16f)
         )
-        drawRect(
+        drawRoundRect(
             color = Color(0xFFCCCCCC),
             topLeft = Offset(width * 0.22f, height * 0.15f),
             size = Size(width * 0.56f, height * 0.08f),
