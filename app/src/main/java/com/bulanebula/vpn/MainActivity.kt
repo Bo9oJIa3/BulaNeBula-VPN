@@ -1,9 +1,13 @@
 package com.bulanebula.vpn
 
+import android.app.Activity
+import android.content.Intent
+import android.net.VpnService
 import android.os.Bundle
 import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -33,11 +37,41 @@ import java.net.URL
 import java.net.URLDecoder
 
 class MainActivity : ComponentActivity() {
+
+    private var onVpnPermissionResult: ((Boolean) -> Unit)? = null
+
+    private val vpnPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val granted = result.resultCode == Activity.RESULT_OK
+        onVpnPermissionResult?.invoke(granted)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             BulaNeBulaTheme {
-                VpnMainScreen()
+                VpnMainScreen(
+                    onRequestVpnPermission = { callback ->
+                        onVpnPermissionResult = callback
+                        val intent = VpnService.prepare(this)
+                        if (intent != null) {
+                            vpnPermissionLauncher.launch(intent)
+                        } else {
+                            callback(true)
+                        }
+                    },
+                    onStartVpnService = { server ->
+                        val serviceIntent = Intent(this, BulaVpnService::class.java).apply {
+                            putExtra("SERVER_ADDRESS", server.address)
+                        }
+                        startService(serviceIntent)
+                    },
+                    onStopVpnService = {
+                        val serviceIntent = Intent(this, BulaVpnService::class.java)
+                        stopService(serviceIntent)
+                    }
+                )
             }
         }
     }
@@ -48,7 +82,11 @@ enum class VpnState { IDLE, CONNECTING, CONNECTED, ERROR }
 data class VpnServer(val name: String, val address: String)
 
 @Composable
-fun VpnMainScreen() {
+fun VpnMainScreen(
+    onRequestVpnPermission: ((Boolean) -> Unit) -> Unit,
+    onStartVpnService: (VpnServer) -> Unit,
+    onStopVpnService: () -> Unit
+) {
     var vpnState by remember { mutableStateOf(VpnState.IDLE) }
     var subLink by remember { mutableStateOf("") }
     var servers by remember { mutableStateOf<List<VpnServer>>(emptyList()) }
@@ -58,7 +96,21 @@ fun VpnMainScreen() {
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     
+    // Секундомер сеанса (в секундах)
+    var sessionSeconds by remember { mutableStateOf(0) }
+    
     val coroutineScope = rememberCoroutineScope()
+
+    // Запуск секундомера при подключении
+    LaunchedEffect(vpnState) {
+        if (vpnState == VpnState.CONNECTED) {
+            sessionSeconds = 0
+            while (true) {
+                delay(1000)
+                sessionSeconds++
+            }
+        }
+    }
 
     val buttonColor by animateColorAsState(
         targetValue = when (vpnState) {
@@ -131,20 +183,34 @@ fun VpnMainScreen() {
                     }
                 }
 
-                // Центральная кнопка (Томат / Паста / Шмяк)
+                // Центральная кнопка (Томат / Паста / Секундомер / Шмяк)
                 Box(
                     modifier = Modifier
                         .size(200.dp)
                         .clickable {
                             if (subLink.isBlank() || selectedServer == null) {
                                 vpnState = VpnState.ERROR
+                                errorMessage = "Выберите узел и подписку!"
                             } else if (vpnState == VpnState.IDLE || vpnState == VpnState.ERROR) {
-                                vpnState = VpnState.CONNECTING
-                                coroutineScope.launch {
-                                    delay(2000)
-                                    vpnState = VpnState.CONNECTED 
+                                onRequestVpnPermission { granted ->
+                                    if (granted) {
+                                        vpnState = VpnState.CONNECTING
+                                        coroutineScope.launch {
+                                            try {
+                                                onStartVpnService(selectedServer!!)
+                                                vpnState = VpnState.CONNECTED
+                                            } catch (e: Exception) {
+                                                vpnState = VpnState.ERROR
+                                                errorMessage = "Ошибка запуска туннеля"
+                                            }
+                                        }
+                                    } else {
+                                        vpnState = VpnState.ERROR
+                                        errorMessage = "Пользователь отклонил VPN-доступ"
+                                    }
                                 }
                             } else if (vpnState == VpnState.CONNECTED) {
+                                onStopVpnService()
                                 vpnState = VpnState.IDLE
                             }
                         },
@@ -158,7 +224,11 @@ fun VpnMainScreen() {
                         text = when (vpnState) {
                             VpnState.IDLE -> "ТАП!"
                             VpnState.CONNECTING -> "ПАСТА..."
-                            VpnState.CONNECTED -> "В СЕТИ"
+                            VpnState.CONNECTED -> {
+                                val mins = sessionSeconds / 60
+                                val secs = sessionSeconds % 60
+                                String.format("%02d:%02d", mins, secs)
+                            }
                             VpnState.ERROR -> "ШМЯК!"
                         },
                         color = Color.White,
@@ -171,9 +241,9 @@ fun VpnMainScreen() {
                 Text(
                     text = when (vpnState) {
                         VpnState.IDLE -> if (servers.isEmpty()) "Добавьте ссылку подписки, чтобы появились узлы" else "Нажмите для запуска туннеля"
-                        VpnState.CONNECTING -> "Трансформируем соединение..."
-                        VpnState.CONNECTED -> "Туннель защищен. Концентрат активен!"
-                        VpnState.ERROR -> if (errorMessage.isNotBlank()) errorMessage else "Нет подписки или узла! Помидорка шмякнулась 🍅"
+                        VpnState.CONNECTING -> "Запрос системных прав..."
+                        VpnState.CONNECTED -> "Туннель защищен. Секундомер активен!"
+                        VpnState.ERROR -> if (errorMessage.isNotBlank()) errorMessage else "Помидорка шмякнулась 🍅"
                     },
                     color = Color(0xFF8C8C9E),
                     fontSize = 14.sp,
@@ -308,7 +378,7 @@ fun VpnMainScreen() {
     }
 }
 
-// Всеядный парсер подписки (Base64 + текстовые списки + имена узлов)
+// Всеядный парсер подписок
 suspend fun fetchSubscriptionServers(urlString: String): Pair<List<VpnServer>, String> = withContext(Dispatchers.IO) {
     try {
         val url = URL(urlString)
@@ -370,51 +440,4 @@ fun DrawScope.drawTomatoOrPaste(state: VpnState, color: Color) {
     val height = size.height
 
     when (state) {
-        VpnState.CONNECTING, VpnState.CONNECTED -> {
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(width * 0.25f, height * 0.2f),
-                size = Size(width * 0.5f, height * 0.7f),
-                cornerRadius = CornerRadius(16f, 16f)
-            )
-            drawRoundRect(
-                color = Color(0xFFCCCCCC),
-                topLeft = Offset(width * 0.22f, height * 0.15f),
-                size = Size(width * 0.56f, height * 0.08f),
-                cornerRadius = CornerRadius(8f, 8f)
-            )
-        }
-        VpnState.ERROR -> {
-            drawOval(
-                color = color,
-                topLeft = Offset(width * 0.15f, height * 0.45f),
-                size = Size(width * 0.7f, height * 0.35f)
-            )
-            drawCircle(
-                color = Color(0xFF00FF88),
-                radius = width * 0.06f,
-                center = Offset(width * 0.5f, height * 0.4f)
-            )
-        }
-        VpnState.IDLE -> {
-            drawCircle(
-                color = color,
-                radius = width * 0.35f,
-                center = Offset(width * 0.5f, height * 0.55f)
-            )
-            drawCircle(
-                color = Color(0xFF00FF88),
-                radius = width * 0.08f,
-                center = Offset(width * 0.5f, height * 0.25f)
-            )
-        }
-    }
-}
-
-@Composable
-fun BulaNeBulaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(),
-        content = content
-    )
-}
+        VpnState.                                         
