@@ -40,6 +40,38 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
 
+// 1. VPN Сервис
+class BulaVpnService : VpnService() {
+    private var vpnInterface: android.os.ParcelFileDescriptor? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startVpnTunnel()
+        return START_STICKY
+    }
+
+    private fun startVpnTunnel() {
+        try {
+            val builder = Builder()
+                .setSession("BulaNeBula")
+                .addAddress("10.0.0.2", 24)
+                .addDnsServer("8.8.8.8")
+                .addRoute("0.0.0.0", 0)
+            vpnInterface = builder.establish()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            vpnInterface?.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}
+
 class MainActivity : ComponentActivity() {
 
     private var onVpnPermissionResult: ((Boolean) -> Unit)? = null
@@ -85,6 +117,160 @@ enum class VpnState { IDLE, CONNECTING, CONNECTED, ERROR }
 
 data class VpnServer(val name: String, val address: String)
 
+// 2. Функции графики и рисования
+fun DrawScope.drawBlnblLogo() {
+    val h = size.height
+    val path = Path().apply {
+        addRect(Rect(0f, 0f, 6f, h))
+        addOval(Rect(4f, h * 0.4f, 16f, h))
+        
+        addRect(Rect(22f, 0f, 28f, h))
+        
+        addRect(Rect(34f, h * 0.35f, 40f, h))
+        addRect(Rect(46f, h * 0.35f, 52f, h))
+        addRect(Rect(34f, h * 0.35f, 52f, h * 0.55f))
+        
+        addRect(Rect(58f, 0f, 64f, h))
+        addOval(Rect(62f, h * 0.4f, 74f, h))
+        
+        addRect(Rect(80f, 0f, 86f, h))
+    }
+    drawPath(path, color = Color.Black)
+}
+
+fun DrawScope.drawMangaEnvironment() {
+    val w = size.width
+    val h = size.height
+
+    val flowerOffsets = listOf(
+        Offset(50f, 40f), Offset(90f, 80f), Offset(150f, 30f), Offset(220f, 90f),
+        Offset(300f, 50f), Offset(380f, 70f), Offset(450f, 30f), Offset(530f, 80f),
+        Offset(600f, 40f), Offset(680f, 90f), Offset(750f, 50f), Offset(820f, 30f)
+    )
+    
+    for ((index, pos) in flowerOffsets.withIndex()) {
+        val scale = if (index % 2 == 0) 1.2f else 0.8f
+        val color = if (index % 3 == 0) Color.Black else Color(0xFF555555)
+        drawCherryBlossom(pos, scale, color)
+    }
+
+    val grassPath = Path().apply {
+        moveTo(0f, h)
+        var currentX = 0f
+        var isUp = true
+        while (currentX < w + 20f) {
+            val stepX = 25f + (currentX.toInt() % 15)
+            val stepY = if (isUp) h - 110f else h - 70f
+            lineTo(currentX, stepY)
+            currentX += stepX
+            isUp = !isUp
+        }
+        lineTo(w, h)
+        close()
+    }
+    drawPath(grassPath, color = Color.Black)
+    
+    var x = 15f
+    while (x < w) {
+        drawLine(
+            color = Color.Black,
+            start = Offset(x, h),
+            end = Offset(x + 5f, h - 85f),
+            strokeWidth = 3f
+        )
+        x += 35f
+    }
+}
+
+fun DrawScope.drawCherryBlossom(center: Offset, scale: Float, color: Color) {
+    val radius = 10f * scale
+    for (i in 0..4) {
+        val angle = i * (Math.PI * 2 / 5)
+        val petalCenter = Offset(
+            center.x + (radius * kotlin.math.cos(angle)).toFloat(),
+            center.y + (radius * kotlin.math.sin(angle)).toFloat()
+        )
+        drawCircle(color = color, radius = 6f * scale, center = petalCenter)
+    }
+    drawCircle(color = Color.White, radius = 3f * scale, center = center)
+}
+
+fun DrawScope.drawMangaSwitchExact(isOn: Boolean) {
+    val w = size.width
+    val h = size.height
+
+    drawRoundRect(
+        color = Color.Black,
+        topLeft = Offset.Zero,
+        size = size,
+        cornerRadius = CornerRadius(8f, 8f),
+        style = Stroke(width = 6f)
+    )
+    drawRoundRect(
+        color = Color.Black,
+        topLeft = Offset(8f, 8f),
+        size = Size(w - 16f, h - 16f),
+        cornerRadius = CornerRadius(4f, 4f),
+        style = Stroke(width = 2f)
+    )
+
+    drawRoundRect(
+        color = Color(0xFFE0E0E0),
+        topLeft = Offset(12f, 12f),
+        size = Size(w - 24f, h - 24f),
+        cornerRadius = CornerRadius(4f, 4f)
+    )
+
+    val dotStep = 16f
+    var dx = 24f
+    while (dx < w - 24f) {
+        var dy = 24f
+        while (dy < h - 24f) {
+            drawCircle(Color(0xFFB8B8B8), radius = 2f, center = Offset(dx, dy))
+            dy += dotStep
+        }
+        dx += dotStep
+    }
+
+    val thumbY = if (isOn) 16f else h - 90f
+    val thumbHeight = 74f
+
+    drawRoundRect(
+        color = Color.White,
+        topLeft = Offset(18f, thumbY),
+        size = Size(w - 36f, thumbHeight),
+        cornerRadius = CornerRadius(6f, 6f)
+    )
+    drawRoundRect(
+        color = Color.Black,
+        topLeft = Offset(18f, thumbY),
+        size = Size(w - 36f, thumbHeight),
+        cornerRadius = CornerRadius(6f, 6f),
+        style = Stroke(width = 4f)
+    )
+
+    val centerX = w / 2f
+    val baseKeyY = thumbY + 12f
+    
+    drawRect(
+        color = Color.Black,
+        topLeft = Offset(centerX - 3f, baseKeyY + 8f),
+        size = Size(6f, 22f)
+    )
+    
+    drawCircle(
+        color = Color.Black,
+        radius = 8f,
+        center = Offset(centerX, baseKeyY + 44f)
+    )
+    drawCircle(
+        color = Color.White,
+        radius = 4f,
+        center = Offset(centerX, baseKeyY + 44f)
+    )
+}
+
+// 3. Главный экран приложения
 @Composable
 fun MangaVpnScreen(
     onRequestVpnPermission: ((Boolean) -> Unit) -> Unit,
@@ -119,7 +305,7 @@ fun MangaVpnScreen(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             
-            // Фоновый холст для цветочков сверху и травы снизу
+            // Фоновый холст (сакура сверху, трава снизу)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 drawMangaEnvironment()
             }
@@ -156,7 +342,7 @@ fun MangaVpnScreen(
                     }
                 }
 
-                // ПЕРЕКЛЮЧАТЕЛЬ ПОСЕРЕДИНЕ
+                // Переключатель туннеля посредине
                 Box(
                     modifier = Modifier
                         .size(130.dp, 190.dp)
@@ -194,7 +380,7 @@ fun MangaVpnScreen(
                     }
                 }
 
-                // ПУНКТИРНЫЙ ПРЯМОУГОЛЬНИК ДЛЯ СПИСКА СЕРВЕРОВ
+                // Пунктирный прямоугольник для списка серверов
                 val dotPattern = Stroke(
                     width = 4f,
                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 12f), 0f)
@@ -255,7 +441,7 @@ fun MangaVpnScreen(
                 }
             }
 
-            // Окно подписки
+            // Окно ввода подписки
             if (showSubGrid) {
                 AlertDialog(
                     onDismissRequest = { showSubGrid = false },
@@ -326,147 +512,4 @@ fun MangaVpnScreen(
                                                 },
                                             color = Color(0xFFF2F2F2),
                                             shape = RoundedCornerShape(6.dp),
-                                            border = BorderStroke(1.dp, Color.Black)
-                                        ) {
-                                            Column(modifier = Modifier.padding(10.dp)) {
-                                                Text(text = server.name, color = Color.Black, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                                Text(text = server.address, color = Color.Gray, fontSize = 11.sp, maxLines = 1)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { showServerDialog = false }) {
-                            Text("Закрыть", color = Color.Black)
-                        }
-                    },
-                    containerColor = Color.White
-                )
-            }
-        }
-    }
-}
-
-// Загрузчик подписок
-suspend fun fetchSubscriptionServers(urlString: String): Pair<List<VpnServer>, String> = withContext(Dispatchers.IO) {
-    try {
-        val url = URL(urlString)
-        val connection = url.openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 10000
-        connection.readTimeout = 10000
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-        connection.instanceFollowRedirects = true
-
-        if (connection.responseCode == 200) {
-            val rawBody = connection.inputStream.bufferedReader().use { it.readText() }.trim()
-            if (rawBody.isBlank()) return@withContext Pair(emptyList(), "Пусто")
-
-            val decodedString = try {
-                val cleanBase64 = rawBody.replace("\\s".toRegex(), "")
-                val bytes = Base64.decode(cleanBase64, Base64.DEFAULT)
-                String(bytes, Charsets.UTF_8)
-            } catch (e: Exception) {
-                rawBody
-            }
-
-            val lines = decodedString.split("\n", "\r\n").map { it.trim() }.filter { it.isNotBlank() }
-            val parsedList = mutableListOf<VpnServer>()
-
-            for ((index, line) in lines.withIndex()) {
-                val serverName = if (line.contains("#")) {
-                    try {
-                        URLDecoder.decode(line.substringAfterLast("#"), "UTF-8")
-                    } catch (e: Exception) {
-                        "Узел #${index + 1}"
-                    }
-                } else {
-                    "Узел #${index + 1}"
-                }
-                parsedList.add(VpnServer(serverName, line))
-            }
-            Pair(parsedList, "")
-        } else {
-            Pair(emptyList(), "HTTP Ошибка")
-        }
-    } catch (e: Exception) {
-        Pair(emptyList(), "Сбой сети")
-    }
-}
-
-// Отрисовка фирменного логотипа blnbl
-fun DrawScope.drawBlnblLogo() {
-    val h = size.height
-    val path = Path().apply {
-        addRect(Rect(0f, 0f, 6f, h))
-        addOval(Rect(4f, h * 0.4f, 16f, h))
-        
-        addRect(Rect(22f, 0f, 28f, h))
-        
-        addRect(Rect(34f, h * 0.35f, 40f, h))
-        addRect(Rect(46f, h * 0.35f, 52f, h))
-        addRect(Rect(34f, h * 0.35f, 52f, h * 0.55f))
-        
-        addRect(Rect(58f, 0f, 64f, h))
-        addOval(Rect(62f, h * 0.4f, 74f, h))
-        
-        addRect(Rect(80f, 0f, 86f, h))
-    }
-    drawPath(path, color = Color.Black)
-}
-
-// Фоновые цветочки и трава
-fun DrawScope.drawMangaEnvironment() {
-    val w = size.width
-    val h = size.height
-
-    val flowerOffsets = listOf(
-        Offset(50f, 40f), Offset(90f, 80f), Offset(150f, 30f), Offset(220f, 90f),
-        Offset(300f, 50f), Offset(380f, 70f), Offset(450f, 30f), Offset(530f, 80f),
-        Offset(600f, 40f), Offset(680f, 90f), Offset(750f, 50f), Offset(820f, 30f)
-    )
-    
-    for ((index, pos) in flowerOffsets.withIndex()) {
-        val scale = if (index % 2 == 0) 1.2f else 0.8f
-        val color = if (index % 3 == 0) Color.Black else Color(0xFF555555)
-        drawCherryBlossom(pos, scale, color)
-    }
-
-    val grassPath = Path().apply {
-        moveTo(0f, h)
-        var currentX = 0f
-        var isUp = true
-        while (currentX < w + 20f) {
-            val stepX = 25f + (currentX.toInt() % 15)
-            val stepY = if (isUp) h - 110f else h - 70f
-            lineTo(currentX, stepY)
-            currentX += stepX
-            isUp = !isUp
-        }
-        lineTo(w, h)
-        close()
-    }
-    drawPath(grassPath, color = Color.Black)
-    
-    var x = 15f
-    while (x < w) {
-        drawLine(
-            color = Color.Black,
-            start = Offset(x, h),
-            end = Offset(x + 5f, h - 85f),
-            strokeWidth = 3f
-        )
-        x += 35f
-    }
-}
-
-fun DrawScope.drawCherryBlossom(center: Offset, scale: Float, color: Color) {
-    val radius = 10f * scale
-    for (i in 0..4) {
-        val angle = i * (Math.PI * 2 / 5)
-        val petalCenter = Offset(
-            center.x + (radius * kotlin.math.cos(angle)).toFloat(),
-            center.
+      
