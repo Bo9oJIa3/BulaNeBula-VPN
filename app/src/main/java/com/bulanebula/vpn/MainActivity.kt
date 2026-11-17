@@ -1,4 +1,3 @@
-
 package com.bulanebula.vpn
 
 import android.app.Activity
@@ -246,85 +245,5 @@ fun MangaVpnScreen(
                                 }
                                 VpnState.CONNECTING -> "Подключение..."
                                 VpnState.ERROR -> errorMessage
-                                VpnState.IDLE -> if (servers.isEmpty()) "Сначала добавьте подписку" else "Нажмите для смены"
-                            },
-                            color = if (vpnState == VpnState.ERROR) Color.Red else Color.Gray,
-                            fontSize = 12.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                }
-            }
-
-            // Окно подписки
-            if (showSubGrid) {
-                AlertDialog(
-                    onDismissRequest = { showSubGrid = false },
-                    title = { Text("Ссылка подписки", color = Color.Black) },
-                    text = {
-                        OutlinedTextField(
-                            value = subLink,
-                            onValueChange = { subLink = it },
-                            placeholder = { Text("https://...") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                if (subLink.isNotBlank()) {
-                                    showSubGrid = false
-                                    isLoading = true
-                                    coroutineScope.launch {
-                                        val (fetchedServers, error) = fetchSubscriptionServers(subLink)
-                                        isLoading = false
-                                        if (fetchedServers.isNotEmpty()) {
-                                            servers = fetchedServers
-                                            selectedServer = servers.firstOrNull()
-                                            if (vpnState == VpnState.ERROR) vpnState = VpnState.IDLE
-                                        } else {
-                                            vpnState = VpnState.ERROR
-                                            errorMessage = error
-                                        }
-                                    }
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
-                        ) {
-                            Text("Загрузить", color = Color.White)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showSubGrid = false }) {
-                            Text("Отмена", color = Color.Black)
-                        }
-                    },
-                    containerColor = Color.White
-                )
-            }
-
-            // Окно выбора узла
-            if (showServerDialog) {
-                AlertDialog(
-                    onDismissRequest = { showServerDialog = false },
-                    title = { Text("Список узлов (${servers.size})", color = Color.Black) },
-                    text = {
-                        Box(modifier = Modifier.height(300.dp).fillMaxWidth()) {
-                            if (servers.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Список пуст", color = Color.Gray)
-                                }
-                            } else {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(servers) { server ->
-                                        Surface(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .clickable {
-                                                    selectedServer = server
-                                                    showServerDialog = false
-                                                },
-                                            color = Color(0xFFF2F2F2),
-                                            border = BorderStroke(1.dp
-                                                                  
+                                VpnState.ID
+                                
