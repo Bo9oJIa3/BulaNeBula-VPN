@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -130,12 +131,21 @@ fun MangaVpnScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Кнопка подписки сверху
+                // Шапка с логотипом blnbl и кнопкой подписки
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Box(
+                        modifier = Modifier.size(90.dp, 36.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            drawBlnblLogo()
+                        }
+                    }
+
                     OutlinedButton(
                         onClick = { showSubGrid = true },
                         shape = RoundedCornerShape(4.dp),
@@ -339,7 +349,28 @@ fun MangaVpnScreen(
     }
 }
 
-// Вспомогательные методы рисования для холста
+// Отрисовка фирменного логотипа blnbl
+fun DrawScope.drawBlnblLogo() {
+    val h = size.height
+    val path = Path().apply {
+        addRect(Rect(0f, 0f, 6f, h))
+        addOval(Rect(4f, h * 0.4f, 16f, h))
+        
+        addRect(Rect(22f, 0f, 28f, h))
+        
+        addRect(Rect(34f, h * 0.35f, 40f, h))
+        addRect(Rect(46f, h * 0.35f, 52f, h))
+        addRect(Rect(34f, h * 0.35f, 52f, h * 0.55f))
+        
+        addRect(Rect(58f, 0f, 64f, h))
+        addOval(Rect(62f, h * 0.4f, 74f, h))
+        
+        addRect(Rect(80f, 0f, 86f, h))
+    }
+    drawPath(path, color = Color.Black)
+}
+
+// Фоновые цветочки и трава
 fun DrawScope.drawMangaEnvironment() {
     val w = size.width
     val h = size.height
@@ -463,29 +494,4 @@ fun DrawScope.drawMangaSwitchExact(isOn: Boolean) {
     drawCircle(
         color = Color.Black,
         radius = 8f,
-        center = Offset(centerX, baseKeyY + 44f)
-    )
-    drawCircle(
-        color = Color.White,
-        radius = 4f,
-        center = Offset(centerX, baseKeyY + 44f)
-    )
-}
-
-suspend fun fetchSubscriptionServers(urlString: String): Pair<List<VpnServer>, String> = withContext(Dispatchers.IO) {
-    try {
-        val url = URL(urlString)
-        val connection = url.openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 10000
-        connection.readTimeout = 10000
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-        connection.instanceFollowRedirects = true
-
-        if (connection.responseCode == 200) {
-            val rawBody = connection.inputStream.bufferedReader().use { it.readText() }.trim()
-            if (rawBody.isBlank()) return@withContext Pair(emptyList(), "Пусто")
-
-            val decodedString = try {
-                val cleanBase64 = rawBody.replace("\\s".toRegex(), "")
-                val bytes = Base64.decode(clean
+        center = Offset(centerX, baseK
