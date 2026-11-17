@@ -1,6 +1,7 @@
 package com.bulanebula.vpn
 
 import android.os.Bundle
+import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.animateColorAsState
@@ -23,8 +24,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,6 +54,8 @@ fun VpnMainScreen() {
     var selectedServer by remember { mutableStateOf<VpnServer?>(null) }
     var showSubDialog by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
     
     val coroutineScope = rememberCoroutineScope()
 
@@ -115,7 +122,7 @@ fun VpnMainScreen() {
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = selectedServer?.name ?: (if (servers.isEmpty()) "Нажмите «Подписка» для ввода ссылки 👆" else "Выберите узел из списка"),
+                            text = if (isLoading) "Загрузка серверов..." else (selectedServer?.name ?: (if (servers.isEmpty()) "Нажмите «Подписка» для ввода ссылки 👆" else "Выберите узел из списка")),
                             color = Color.White,
                             fontSize = 15.sp,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
@@ -165,7 +172,7 @@ fun VpnMainScreen() {
                         VpnState.IDLE -> if (servers.isEmpty()) "Добавьте ссылку подписки, чтобы появились узлы" else "Нажмите для запуска туннеля"
                         VpnState.CONNECTING -> "Трансформируем соединение..."
                         VpnState.CONNECTED -> "Туннель защищен. Концентрат активен!"
-                        VpnState.ERROR -> "Нет подписки или узла! Помидорка шмякнулась 🍅"
+                        VpnState.ERROR -> if (errorMessage.isNotBlank()) errorMessage else "Нет подписки или узла! Помидорка шмякнулась 🍅"
                     },
                     color = Color(0xFF8C8C9E),
                     fontSize = 14.sp,
@@ -181,7 +188,7 @@ fun VpnMainScreen() {
                     text = {
                         Column {
                             Text(
-                                text = "Введите URL вашей подписки:",
+                                text = "Введите URL вашей подписки (серверы загружатся автоматически):",
                                 color = Color(0xFF8C8C9E),
                                 fontSize = 13.sp
                             )
@@ -204,18 +211,28 @@ fun VpnMainScreen() {
                         Button(
                             onClick = {
                                 if (subLink.isNotBlank()) {
-                                    // Четко добавляем ровно то, что введено, без левых названий
-                                    servers = listOf(
-                                        VpnServer(subLink, subLink)
-                                    )
-                                    selectedServer = servers.firstOrNull()
-                                    if (vpnState == VpnState.ERROR) vpnState = VpnState.IDLE
                                     showSubDialog = false
+                                    isLoading = true
+                                    errorMessage = ""
+                                    
+                                    // Запускаем асинхронную загрузку подписки в фоновом потоке
+                                    coroutineScope.launch {
+                                        val fetchedServers = fetchSubscriptionServers(subLink)
+                                        isLoading = false
+                                        if (fetchedServers.isNotEmpty()) {
+                                            servers = fetchedServers
+                                            selectedServer = servers.firstOrNull()
+                                            if (vpnState == VpnState.ERROR) vpnState = VpnState.IDLE
+                                        } else {
+                                            vpnState = VpnState.ERROR
+                                            errorMessage = "Не удалось загрузить узлы из подписки"
+                                        }
+                                    }
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FF88))
                         ) {
-                            Text("Сохранить", color = Color.Black, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            Text("Загрузить", color = Color.Black, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                         }
                     },
                     dismissButton = {
@@ -240,7 +257,7 @@ fun VpnMainScreen() {
                         ) {
                             if (servers.isEmpty()) {
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Список пуст. Сначала добавьте ссылку подписки.", color = Color(0xFF8C8C9E), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                    Text("Список пуст. Сначала загрузите ссылку подписки.", color = Color(0xFF8C8C9E), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                                 }
                             } else {
                                 LazyColumn(
@@ -289,6 +306,41 @@ fun VpnMainScreen() {
             }
         }
     }
+}
+
+// Функция для скачивания и парсинга подписки по URL
+suspend fun fetchSubscriptionServers(urlString: String): List<VpnServer> = withContext(Dispatchers.IO) {
+    try {
+        val url = URL(urlString)
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 5000
+        connection.readTimeout = 5000
+
+        if (connection.responseCode == 200) {
+            val rawBody = connection.inputStream.bufferedReader().use { it.readText() }.trim()
+            
+            // Пробуем раскодировать из Base64 (стандартный формат подписок)
+            val decodedString = try {
+                val bytes = Base64.decode(rawBody, Base64.DEFAULT)
+                String(bytes, Charsets.UTF_8)
+            } catch (e: Exception) {
+                rawBody // Если это не base64, используем текст как есть
+            }
+
+            // Разбиваем по строкам (каждая строка — отдельный конфиг/сервер)
+            val lines = decodedString.split("\n", "\r\n").filter { it.isNotBlank() }
+            
+            val parsedList = mutableListOf<VpnServer>()
+            for ((index, line) in lines.withIndex()) {
+                parsedList.add(VpnServer("Узел #${index + 1}", line.trim()))
+            }
+            return@withContext parsedList
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    emptyList()
 }
 
 fun DrawScope.drawTomatoOrPaste(state: VpnState, color: Color) {
