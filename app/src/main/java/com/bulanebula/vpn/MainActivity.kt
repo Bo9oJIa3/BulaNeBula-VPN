@@ -59,7 +59,7 @@ fun VpnMainScreen() {
             VpnState.CONNECTED -> Color(0xFF00FF88)
             VpnState.ERROR -> Color(0xFF7A1C1C)
         },
-        animationSpec = tween(durationMillis = 500),
+        animationSpec = tween(durationMillis = 300),
         label = "ColorAnim"
     )
 
@@ -123,15 +123,18 @@ fun VpnMainScreen() {
                     }
                 }
 
-                // Центральная кнопка (Томат / Паста)
+                // Центральная кнопка (Томат / Паста / Шмяк)
                 Box(
                     modifier = Modifier
                         .size(200.dp)
                         .clickable {
-                            if (selectedServer != null && (vpnState == VpnState.IDLE || vpnState == VpnState.ERROR)) {
+                            if (subLink.isBlank() || selectedServer == null) {
+                                // Ошибка: подписка не введена или узел не выбран -> плющим помидорку (Шмяк)
+                                vpnState = VpnState.ERROR
+                            } else if (vpnState == VpnState.IDLE || vpnState == VpnState.ERROR) {
                                 vpnState = VpnState.CONNECTING
                                 coroutineScope.launch {
-                                    delay(2500)
+                                    delay(2000)
                                     vpnState = VpnState.CONNECTED 
                                 }
                             } else if (vpnState == VpnState.CONNECTED) {
@@ -163,7 +166,7 @@ fun VpnMainScreen() {
                         VpnState.IDLE -> if (servers.isEmpty()) "Добавьте ссылку подписки, чтобы появились узлы" else "Нажмите для запуска туннеля"
                         VpnState.CONNECTING -> "Трансформируем соединение..."
                         VpnState.CONNECTED -> "Туннель защищен. Концентрат активен!"
-                        VpnState.ERROR -> "Ошибка связи! Попробуйте снова."
+                        VpnState.ERROR -> "Нет подписки или узла! Помидорка шмякнулась 🍅"
                     },
                     color = Color(0xFF8C8C9E),
                     fontSize = 14.sp,
@@ -175,11 +178,11 @@ fun VpnMainScreen() {
             if (showSubDialog) {
                 AlertDialog(
                     onDismissRequest = { showSubDialog = false },
-                    title = { Text("Вставить ссылку подписки", color = Color.White) },
+                    title = { Text("Ссылка подписки", color = Color.White) },
                     text = {
                         Column {
                             Text(
-                                text = "Введите URL вашей подписки (vless://, v2ray, etc.):",
+                                text = "Введите URL вашей подписки:",
                                 color = Color(0xFF8C8C9E),
                                 fontSize = 13.sp
                             )
@@ -202,14 +205,13 @@ fun VpnMainScreen() {
                         Button(
                             onClick = {
                                 if (subLink.isNotBlank()) {
-                                    // Создаем узлы на основе введенной ссылки
+                                    // Очищаем старые ошибки и создаем пустой/реальный список на основе подписки
+                                    // (В будущем здесь будет парсер ссылки, пока оставляем честный список из ссылки)
                                     servers = listOf(
-                                        VpnServer("Основной узел (из подписки)", subLink),
-                                        VpnServer("Резервный узел (из подписки)", subLink)
+                                        VpnServer("Узел из: ${subLink.take(25)}...", subLink)
                                     )
-                                    if (servers.isNotEmpty()) {
-                                        selectedServer = servers.first()
-                                    }
+                                    selectedServer = servers.firstOrNull()
+                                    if (vpnState == VpnState.ERROR) vpnState = VpnState.IDLE
                                     showSubDialog = false
                                 }
                             },
@@ -231,7 +233,7 @@ fun VpnMainScreen() {
             if (showServerDialog) {
                 AlertDialog(
                     onDismissRequest = { showServerDialog = false },
-                    title = { Text("Выбор узла (${servers.size} доступно)", color = Color.White) },
+                    title = { Text("Список узлов (${servers.size})", color = Color.White) },
                     text = {
                         Box(
                             modifier = Modifier
@@ -295,30 +297,49 @@ fun DrawScope.drawTomatoOrPaste(state: VpnState, color: Color) {
     val width = size.width
     val height = size.height
 
-    if (state == VpnState.CONNECTING || state == VpnState.CONNECTED) {
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(width * 0.25f, height * 0.2f),
-            size = Size(width * 0.5f, height * 0.7f),
-            cornerRadius = CornerRadius(16f, 16f)
-        )
-        drawRoundRect(
-            color = Color(0xFFCCCCCC),
-            topLeft = Offset(width * 0.22f, height * 0.15f),
-            size = Size(width * 0.56f, height * 0.08f),
-            cornerRadius = CornerRadius(8f, 8f)
-        )
-    } else {
-        drawCircle(
-            color = color,
-            radius = width * 0.35f,
-            center = Offset(width * 0.5f, height * 0.55f)
-        )
-        drawCircle(
-            color = Color(0xFF00FF88),
-            radius = width * 0.08f,
-            center = Offset(width * 0.5f, height * 0.25f)
-        )
+    when (state) {
+        VpnState.CONNECTING, VpnState.CONNECTED -> {
+            // Рисуем тюбик пасты
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(width * 0.25f, height * 0.2f),
+                size = Size(width * 0.5f, height * 0.7f),
+                cornerRadius = CornerRadius(16f, 16f)
+            )
+            drawRoundRect(
+                color = Color(0xFFCCCCCC),
+                topLeft = Offset(width * 0.22f, height * 0.15f),
+                size = Size(width * 0.56f, height * 0.08f),
+                cornerRadius = CornerRadius(8f, 8f)
+            )
+        }
+        VpnState.ERROR -> {
+            // Сплющенный помидор («Шмяк» / лепешка)
+            drawOval(
+                color = color,
+                topLeft = Offset(width * 0.15f, height * 0.45f),
+                size = Size(width * 0.7f, height * 0.35f)
+            )
+            // Хвостик сплющенного томата
+            drawCircle(
+                color = Color(0xFF00FF88),
+                radius = width * 0.06f,
+                center = Offset(width * 0.5f, height * 0.4f)
+            )
+        }
+        VpnState.IDLE -> {
+            // Обычный круглый помидор
+            drawCircle(
+                color = color,
+                radius = width * 0.35f,
+                center = Offset(width * 0.5f, height * 0.55f)
+            )
+            drawCircle(
+                color = Color(0xFF00FF88),
+                radius = width * 0.08f,
+                center = Offset(width * 0.5f, height * 0.25f)
+            )
+        }
     }
 }
 
