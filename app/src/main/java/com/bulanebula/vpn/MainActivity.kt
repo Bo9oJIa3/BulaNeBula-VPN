@@ -129,7 +129,6 @@ fun VpnMainScreen() {
                         .size(200.dp)
                         .clickable {
                             if (subLink.isBlank() || selectedServer == null) {
-                                // Ошибка: подписка не введена или узел не выбран -> плющим помидорку (Шмяк)
                                 vpnState = VpnState.ERROR
                             } else if (vpnState == VpnState.IDLE || vpnState == VpnState.ERROR) {
                                 vpnState = VpnState.CONNECTING
@@ -205,10 +204,9 @@ fun VpnMainScreen() {
                         Button(
                             onClick = {
                                 if (subLink.isNotBlank()) {
-                                    // Очищаем старые ошибки и создаем пустой/реальный список на основе подписки
-                                    // (В будущем здесь будет парсер ссылки, пока оставляем честный список из ссылки)
+                                    // Четко добавляем ровно то, что введено, без левых названий
                                     servers = listOf(
-                                        VpnServer("Узел из: ${subLink.take(25)}...", subLink)
+                                        VpnServer(subLink, subLink)
                                     )
                                     selectedServer = servers.firstOrNull()
                                     if (vpnState == VpnState.ERROR) vpnState = VpnState.IDLE
@@ -299,7 +297,6 @@ fun DrawScope.drawTomatoOrPaste(state: VpnState, color: Color) {
 
     when (state) {
         VpnState.CONNECTING, VpnState.CONNECTED -> {
-            // Рисуем тюбик пасты
             drawRoundRect(
                 color = color,
                 topLeft = Offset(width * 0.25f, height * 0.2f),
@@ -314,13 +311,11 @@ fun DrawScope.drawTomatoOrPaste(state: VpnState, color: Color) {
             )
         }
         VpnState.ERROR -> {
-            // Сплющенный помидор («Шмяк» / лепешка)
             drawOval(
                 color = color,
                 topLeft = Offset(width * 0.15f, height * 0.45f),
                 size = Size(width * 0.7f, height * 0.35f)
             )
-            // Хвостик сплющенного томата
             drawCircle(
                 color = Color(0xFF00FF88),
                 radius = width * 0.06f,
@@ -328,7 +323,6 @@ fun DrawScope.drawTomatoOrPaste(state: VpnState, color: Color) {
             )
         }
         VpnState.IDLE -> {
-            // Обычный круглый помидор
             drawCircle(
                 color = color,
                 radius = width * 0.35f,
