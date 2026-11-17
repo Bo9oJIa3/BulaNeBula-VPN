@@ -245,5 +245,228 @@ fun MangaVpnScreen(
                                 }
                                 VpnState.CONNECTING -> "Подключение..."
                                 VpnState.ERROR -> errorMessage
-                                VpnState.ID
-                                
+                                VpnState.IDLE -> if (servers.isEmpty()) "Сначала добавьте подписку" else "Нажмите для смены"
+                            },
+                            color = if (vpnState == VpnState.ERROR) Color.Red else Color.Gray,
+                            fontSize = 12.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            // Окно подписки
+            if (showSubGrid) {
+                AlertDialog(
+                    onDismissRequest = { showSubGrid = false },
+                    title = { Text("Ссылка подписки", color = Color.Black) },
+                    text = {
+                        OutlinedTextField(
+                            value = subLink,
+                            onValueChange = { subLink = it },
+                            placeholder = { Text("https://...") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (subLink.isNotBlank()) {
+                                    showSubGrid = false
+                                    isLoading = true
+                                    coroutineScope.launch {
+                                        val (fetchedServers, error) = fetchSubscriptionServers(subLink)
+                                        isLoading = false
+                                        if (fetchedServers.isNotEmpty()) {
+                                            servers = fetchedServers
+                                            selectedServer = servers.firstOrNull()
+                                            if (vpnState == VpnState.ERROR) vpnState = VpnState.IDLE
+                                        } else {
+                                            vpnState = VpnState.ERROR
+                                            errorMessage = error
+                                        }
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                        ) {
+                            Text("Загрузить", color = Color.White)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showSubGrid = false }) {
+                            Text("Отмена", color = Color.Black)
+                        }
+                    },
+                    containerColor = Color.White
+                )
+            }
+
+            // Окно выбора узла
+            if (showServerDialog) {
+                AlertDialog(
+                    onDismissRequest = { showServerDialog = false },
+                    title = { Text("Список узлов (${servers.size})", color = Color.Black) },
+                    text = {
+                        Box(modifier = Modifier.height(300.dp).fillMaxWidth()) {
+                            if (servers.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("Список пуст", color = Color.Gray)
+                                }
+                            } else {
+                                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(servers) { server ->
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .clickable {
+                                                    selectedServer = server
+                                                    showServerDialog = false
+                                                },
+                                            color = Color(0xFFF2F2F2),
+                                            shape = RoundedCornerShape(6.dp),
+                                            border = BorderStroke(1.dp, Color.Black)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp)) {
+                                                Text(text = server.name, color = Color.Black, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                                Text(text = server.address, color = Color.Gray, fontSize = 11.sp, maxLines = 1)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showServerDialog = false }) {
+                            Text("Закрыть", color = Color.Black)
+                        }
+                    },
+                    containerColor = Color.White
+                )
+            }
+        }
+    }
+}
+
+// Загрузчик подписок
+suspend fun fetchSubscriptionServers(urlString: String): Pair<List<VpnServer>, String> = withContext(Dispatchers.IO) {
+    try {
+        val url = URL(urlString)
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+        connection.instanceFollowRedirects = true
+
+        if (connection.responseCode == 200) {
+            val rawBody = connection.inputStream.bufferedReader().use { it.readText() }.trim()
+            if (rawBody.isBlank()) return@withContext Pair(emptyList(), "Пусто")
+
+            val decodedString = try {
+                val cleanBase64 = rawBody.replace("\\s".toRegex(), "")
+                val bytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+                String(bytes, Charsets.UTF_8)
+            } catch (e: Exception) {
+                rawBody
+            }
+
+            val lines = decodedString.split("\n", "\r\n").map { it.trim() }.filter { it.isNotBlank() }
+            val parsedList = mutableListOf<VpnServer>()
+
+            for ((index, line) in lines.withIndex()) {
+                val serverName = if (line.contains("#")) {
+                    try {
+                        URLDecoder.decode(line.substringAfterLast("#"), "UTF-8")
+                    } catch (e: Exception) {
+                        "Узел #${index + 1}"
+                    }
+                } else {
+                    "Узел #${index + 1}"
+                }
+                parsedList.add(VpnServer(serverName, line))
+            }
+            Pair(parsedList, "")
+        } else {
+            Pair(emptyList(), "HTTP Ошибка")
+        }
+    } catch (e: Exception) {
+        Pair(emptyList(), "Сбой сети")
+    }
+}
+
+// Отрисовка фирменного логотипа blnbl
+fun DrawScope.drawBlnblLogo() {
+    val h = size.height
+    val path = Path().apply {
+        addRect(Rect(0f, 0f, 6f, h))
+        addOval(Rect(4f, h * 0.4f, 16f, h))
+        
+        addRect(Rect(22f, 0f, 28f, h))
+        
+        addRect(Rect(34f, h * 0.35f, 40f, h))
+        addRect(Rect(46f, h * 0.35f, 52f, h))
+        addRect(Rect(34f, h * 0.35f, 52f, h * 0.55f))
+        
+        addRect(Rect(58f, 0f, 64f, h))
+        addOval(Rect(62f, h * 0.4f, 74f, h))
+        
+        addRect(Rect(80f, 0f, 86f, h))
+    }
+    drawPath(path, color = Color.Black)
+}
+
+// Фоновые цветочки и трава
+fun DrawScope.drawMangaEnvironment() {
+    val w = size.width
+    val h = size.height
+
+    val flowerOffsets = listOf(
+        Offset(50f, 40f), Offset(90f, 80f), Offset(150f, 30f), Offset(220f, 90f),
+        Offset(300f, 50f), Offset(380f, 70f), Offset(450f, 30f), Offset(530f, 80f),
+        Offset(600f, 40f), Offset(680f, 90f), Offset(750f, 50f), Offset(820f, 30f)
+    )
+    
+    for ((index, pos) in flowerOffsets.withIndex()) {
+        val scale = if (index % 2 == 0) 1.2f else 0.8f
+        val color = if (index % 3 == 0) Color.Black else Color(0xFF555555)
+        drawCherryBlossom(pos, scale, color)
+    }
+
+    val grassPath = Path().apply {
+        moveTo(0f, h)
+        var currentX = 0f
+        var isUp = true
+        while (currentX < w + 20f) {
+            val stepX = 25f + (currentX.toInt() % 15)
+            val stepY = if (isUp) h - 110f else h - 70f
+            lineTo(currentX, stepY)
+            currentX += stepX
+            isUp = !isUp
+        }
+        lineTo(w, h)
+        close()
+    }
+    drawPath(grassPath, color = Color.Black)
+    
+    var x = 15f
+    while (x < w) {
+        drawLine(
+            color = Color.Black,
+            start = Offset(x, h),
+            end = Offset(x + 5f, h - 85f),
+            strokeWidth = 3f
+        )
+        x += 35f
+    }
+}
+
+fun DrawScope.drawCherryBlossom(center: Offset, scale: Float, color: Color) {
+    val radius = 10f * scale
+    for (i in 0..4) {
+        val angle = i * (Math.PI * 2 / 5)
+        val petalCenter = Offset(
+            center.x + (radius * kotlin.math.cos(angle)).toFloat(),
+            center.
