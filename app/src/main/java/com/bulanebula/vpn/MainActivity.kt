@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -122,7 +123,7 @@ fun VpnMainScreen() {
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (isLoading) "Загрузка серверов..." else (selectedServer?.name ?: (if (servers.isEmpty()) "Нажмите «Подписка» для ввода ссылки 👆" else "Выберите узел из списка")),
+                            text = if (isLoading) "Загружаем подписку..." else (selectedServer?.name ?: (if (servers.isEmpty()) "Нажмите «Подписка» для ввода ссылки 👆" else "Выберите узел из списка")),
                             color = Color.White,
                             fontSize = 15.sp,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
@@ -188,7 +189,7 @@ fun VpnMainScreen() {
                     text = {
                         Column {
                             Text(
-                                text = "Введите URL вашей подписки (серверы загружатся автоматически):",
+                                text = "Введите URL вашей подписки:",
                                 color = Color(0xFF8C8C9E),
                                 fontSize = 13.sp
                             )
@@ -215,9 +216,8 @@ fun VpnMainScreen() {
                                     isLoading = true
                                     errorMessage = ""
                                     
-                                    // Запускаем асинхронную загрузку подписки в фоновом потоке
                                     coroutineScope.launch {
-                                        val fetchedServers = fetchSubscriptionServers(subLink)
+                                        val (fetchedServers, error) = fetchSubscriptionServers(subLink)
                                         isLoading = false
                                         if (fetchedServers.isNotEmpty()) {
                                             servers = fetchedServers
@@ -225,7 +225,7 @@ fun VpnMainScreen() {
                                             if (vpnState == VpnState.ERROR) vpnState = VpnState.IDLE
                                         } else {
                                             vpnState = VpnState.ERROR
-                                            errorMessage = "Не удалось загрузить узлы из подписки"
+                                            errorMessage = error.ifBlank { "Не удалось загрузить узлы" }
                                         }
                                     }
                                 }
@@ -308,39 +308,61 @@ fun VpnMainScreen() {
     }
 }
 
-// Функция для скачивания и парсинга подписки по URL
-suspend fun fetchSubscriptionServers(urlString: String): List<VpnServer> = withContext(Dispatchers.IO) {
+// Всеядный парсер подписки (Base64 + текстовые списки + имена узлов)
+suspend fun fetchSubscriptionServers(urlString: String): Pair<List<VpnServer>, String> = withContext(Dispatchers.IO) {
     try {
         val url = URL(urlString)
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
-        connection.connectTimeout = 5000
-        connection.readTimeout = 5000
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        connection.instanceFollowRedirects = true
 
-        if (connection.responseCode == 200) {
+        val responseCode = connection.responseCode
+        if (responseCode == 200) {
             val rawBody = connection.inputStream.bufferedReader().use { it.readText() }.trim()
-            
-            // Пробуем раскодировать из Base64 (стандартный формат подписок)
+            if (rawBody.isBlank()) {
+                return@withContext Pair(emptyList(), "Подписка пуста")
+            }
+
             val decodedString = try {
-                val bytes = Base64.decode(rawBody, Base64.DEFAULT)
+                val cleanBase64 = rawBody.replace("\\s".toRegex(), "")
+                val bytes = Base64.decode(cleanBase64, Base64.DEFAULT)
                 String(bytes, Charsets.UTF_8)
             } catch (e: Exception) {
-                rawBody // Если это не base64, используем текст как есть
+                rawBody
             }
 
-            // Разбиваем по строкам (каждая строка — отдельный конфиг/сервер)
-            val lines = decodedString.split("\n", "\r\n").filter { it.isNotBlank() }
-            
+            val lines = decodedString.split("\n", "\r\n").map { it.trim() }.filter { it.isNotBlank() }
             val parsedList = mutableListOf<VpnServer>()
+
             for ((index, line) in lines.withIndex()) {
-                parsedList.add(VpnServer("Узел #${index + 1}", line.trim()))
+                val serverName = if (line.contains("#")) {
+                    try {
+                        val decodedName = URLDecoder.decode(line.substringAfterLast("#"), "UTF-8")
+                        if (decodedName.isNotBlank()) decodedName else "Узел #${index + 1}"
+                    } catch (e: Exception) {
+                        "Узел #${index + 1}"
+                    }
+                } else {
+                    "Узел #${index + 1}"
+                }
+
+                parsedList.add(VpnServer(serverName, line))
             }
-            return@withContext parsedList
+
+            if (parsedList.isNotEmpty()) {
+                return@withContext Pair(parsedList, "")
+            } else {
+                return@withContext Pair(emptyList(), "Не найдены узлы в подписке")
+            }
+        } else {
+            return@withContext Pair(emptyList(), "HTTP Ошибка: $responseCode")
         }
     } catch (e: Exception) {
-        e.printStackTrace()
+        return@withContext Pair(emptyList(), "Сбой сети: ${e.localizedMessage ?: e.javaClass.simpleName}")
     }
-    emptyList()
 }
 
 fun DrawScope.drawTomatoOrPaste(state: VpnState, color: Color) {
