@@ -270,7 +270,54 @@ fun DrawScope.drawMangaSwitchExact(isOn: Boolean) {
     )
 }
 
-// 3. Главный экран приложения
+// 3. Сетевой загрузчик подписок (вынесен на верхний уровень)
+suspend fun fetchSubscriptionServers(urlString: String): Pair<List<VpnServer>, String> = withContext(Dispatchers.IO) {
+    try {
+        val url = URL(urlString)
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+        connection.instanceFollowRedirects = true
+
+        if (connection.responseCode == 200) {
+            val rawBody = connection.inputStream.bufferedReader().use { it.readText() }.trim()
+            if (rawBody.isBlank()) return@withContext Pair(emptyList(), "Пусто")
+
+            val decodedString = try {
+                val cleanBase64 = rawBody.replace("\\s".toRegex(), "")
+                val bytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+                String(bytes, Charsets.UTF_8)
+            } catch (e: Exception) {
+                rawBody
+            }
+
+            val lines = decodedString.split("\n", "\r\n").map { it.trim() }.filter { it.isNotBlank() }
+            val parsedList = mutableListOf<VpnServer>()
+
+            for ((index, line) in lines.withIndex()) {
+                val serverName = if (line.contains("#")) {
+                    try {
+                        URLDecoder.decode(line.substringAfterLast("#"), "UTF-8")
+                    } catch (e: Exception) {
+                        "Узел #${index + 1}"
+                    }
+                } else {
+                    "Узел #${index + 1}"
+                }
+                parsedList.add(VpnServer(serverName, line))
+            }
+            Pair(parsedList, "")
+        } else {
+            Pair(emptyList(), "HTTP Ошибка")
+        }
+    } catch (e: Exception) {
+        Pair(emptyList(), "Сбой сети")
+    }
+}
+
+// 4. Главный экран приложения
 @Composable
 fun MangaVpnScreen(
     onRequestVpnPermission: ((Boolean) -> Unit) -> Unit,
@@ -476,40 +523,4 @@ fun MangaVpnScreen(
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
                         ) {
-                            Text("Загрузить", color = Color.White)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showSubGrid = false }) {
-                            Text("Отмена", color = Color.Black)
-                        }
-                    },
-                    containerColor = Color.White
-                )
-            }
-
-            // Окно выбора узла
-            if (showServerDialog) {
-                AlertDialog(
-                    onDismissRequest = { showServerDialog = false },
-                    title = { Text("Список узлов (${servers.size})", color = Color.Black) },
-                    text = {
-                        Box(modifier = Modifier.height(300.dp).fillMaxWidth()) {
-                            if (servers.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Список пуст", color = Color.Gray)
-                                }
-                            } else {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(servers) { server ->
-                                        Surface(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .clickable {
-                                                    selectedServer = server
-                                                    showServerDialog = false
-                                                },
-                                            color = Color(0xFFF2F2F2),
-                                            shape = RoundedCornerShape(6.dp),
-      
+                            Text("Загрузить", 
